@@ -21,12 +21,12 @@ jobs:
         uses: actions/cache@v2
         with:
           path: ./listings.json
-          key: listings
+          key: item-listings
       - name: Build scraper
         shell: bash
         run: >
-          go build ./tohka.us/olxscraper
+          go build
       - name: Scrape data
         shell: bash
         run: >
-          ./olxscraper
+          ./olxscraper -client ${{ secrets.CLIENT_ID }} ${{ secrets.KEYWORDS }}

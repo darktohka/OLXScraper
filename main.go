@@ -1,12 +1,9 @@
 package main
 
 import (
-	"encoding/json"
-	"errors"
+	"flag"
 	"fmt"
-	"io/ioutil"
 	"net/http"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -15,53 +12,15 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
-// Listing is an OLX listing.
-type Listing struct {
-	Title string `json:"title"`
-	Location string `json:"location"`
-	Link string `json:"link"`
-	Price int `json:"price"`
-}
-
-// Listings contains our base JSON document
-type Listings struct {
-	Listings []Listing `json:"listings"`
-}
-
-func getOLXLink(item string, page int) string {
+func createOLXLink(item string, page int) string {
 	item = strings.Replace(item, " ", "-", -1)
 	return fmt.Sprintf("https://www.olx.ro/oferte/q-%s/?search%%5Border%%5D=filter_float_price%%3Aasc&page=%d", item, page)
 }
 
-func contactOLX(item string) ([]byte, error) {
-	link := getOLXLink(item, 0)
-	fmt.Printf("%s", link)
+func scrapePage(client *http.Client, item string, listings []Listing, page int) ([]Listing, error) {
+	fmt.Printf("Scraping OLX keyword %s (page %d)\n", item, page)
 
-	response, err := http.Get(link)
-
-	if err != nil {
-		return nil, err
-	}
-
-	defer response.Body.Close()
-
-	if response.StatusCode != 200 {
-		return nil, fmt.Errorf("Invalid status code: %d", response.StatusCode)
-	}
-
-	bodyText, err := ioutil.ReadAll(response.Body)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return bodyText, nil
-}
-
-func scrapeOLX(client *http.Client, item string, page int, listings []Listing) ([]Listing, error) {
-	fmt.Printf("Scraping OLX client (%s)! Page: %d\n", item, page)
-
-	link := getOLXLink(item, page)
+	link := createOLXLink(item, page)
 	request, err := http.NewRequest("GET", link, nil)
 
 	if err != nil {
@@ -95,10 +54,10 @@ func scrapeOLX(client *http.Client, item string, page int, listings []Listing) (
 		return listings, err
 	}
 
-	document.Find(".offer-wrapper").Each(func(i int, s *goquery.Selection) {
+	document.Find("#offers_table[summary='Anunturi'] .offer-wrapper").Each(func(i int, s *goquery.Selection) {
 		linkSel := s.Find("[data-cy='listing-ad-title']")
 		link, exists := linkSel.Attr("href")
-		link = link[:strings.LastIndex(link, "#")]
+		link = trimUntil(link, "#")
 
 		if !exists {
 			err = fmt.Errorf("Could not find link on page")
@@ -128,7 +87,11 @@ func scrapeOLX(client *http.Client, item string, page int, listings []Listing) (
 			return
 		}
 
-		listings = append(listings, Listing{title, location, link, price})
+		imageSel := s.Find("img")
+		image, _ := imageSel.Attr("src")
+		image = trimUntil(image, ";s=")
+
+		listings = append(listings, Listing{title, location, link, image, price})
 	})
 
 	if err != nil {
@@ -150,7 +113,7 @@ func scrapeOLX(client *http.Client, item string, page int, listings []Listing) (
 	}
 
 	if totalPages > page {
-		listings, err = scrapeOLX(client, item, page + 1, listings)
+		listings, err = scrapePage(client, item, listings, page + 1)
 
 		if err != nil {
 			return listings, err
@@ -160,68 +123,53 @@ func scrapeOLX(client *http.Client, item string, page int, listings []Listing) (
 	return listings, err
 }
 
-func printListings(listings []Listing) {
-	for _, s := range listings {
-		fmt.Printf("%s: available at %s, location: %s, price: %d\n", s.Title, s.Link, s.Location, s.Price)
-	}
-}
-
-func loadDatabase() *Listings {
-	jsonFile, err := os.Open("listings.json")
-
-	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			fmt.Println(err)
-		}
-
-		return nil
-	}
-
-	defer jsonFile.Close()
-
-	byteValue, err := ioutil.ReadAll(jsonFile)
-
-	if err != nil {
-		fmt.Println(err)
-		return nil
-	}
-
-	var listings Listings
-	json.Unmarshal(byteValue, &listings)
-
-	return &listings
-}
-
-
-func saveDatabase(listings []Listing) error {
-	file, err := json.MarshalIndent(Listings{listings}, "", "  ")
-
-	if err != nil {
-		return err
-	}
-
-	return ioutil.WriteFile("listings.json", file, 0644)
-}
-
 func main() {
+	clientID := flag.String("client", "", "WirePusher client ID");
+
+	flag.Parse()
+
+	if len(*clientID) == 0 {
+		flag.PrintDefaults()
+		return;
+	}
+
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 	}
 
-	db := loadDatabase()
+	var listings []Listing
+	var err error
 
-	if db != nil {
-		printListings((*db).Listings)
+	for _, keyword := range flag.Args() {
+		listings, err = scrapePage(client, keyword, listings, 1)
+
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 	}
 
-	var listings []Listing
-	listings, err := scrapeOLX(client, "htc vive", 1, listings)
+	database := loadDatabase()
+	newListings := filterNewListings(database, listings)
 
-	printListings(listings)
+	if len(newListings) == 0 {
+		return
+	}
 
 	err = saveDatabase(listings)
 
 	if err != nil {
 		fmt.Println(err)
+		return
+	}
+
+	if len(database) == 0 {
+		println("Skipping notifications on first run...");
+		return;
+	}
+
+	for _, listing := range newListings {
+		fmt.Printf("Sending notification for %s for %d lei...\n", listing.Title, listing.Price);
+		sendNotification(client, listing, *clientID)
 	}
 }
