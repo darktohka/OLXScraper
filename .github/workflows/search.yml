@@ -1,6 +1,11 @@
 name: Search for OLX postings
 
-on: [push, repository_dispatch, workflow_dispatch]
+on:
+  schedule:
+    - cron: "*/2 * * * *"
+  push:
+  repository_dispatch:
+  workflow_dispatch:
 
 jobs:
   search:
