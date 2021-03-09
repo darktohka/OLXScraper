@@ -12,6 +12,11 @@ jobs:
         uses: actions/setup-go@v2
         with:
           go-version: "^1.16"
+      - name: Cache listings
+        uses: actions/cache@v2
+        with:
+          path: ./listings.json
+          key: listings
       - name: Build scraper
         shell: bash
         run: >
