@@ -9,37 +9,37 @@ import (
 )
 
 func loadDatabase() []Listing {
-	jsonFile, err := os.Open("listings.json")
+    jsonFile, err := os.Open("listings.json")
 
-	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			fmt.Println(err)
-		}
+    if err != nil {
+        if !errors.Is(err, os.ErrNotExist) {
+            fmt.Println(err)
+        }
 
-		return []Listing{}
-	}
+        return []Listing{}
+    }
 
-	defer jsonFile.Close()
+    defer jsonFile.Close()
 
-	byteValue, err := ioutil.ReadAll(jsonFile)
+    byteValue, err := ioutil.ReadAll(jsonFile)
 
-	if err != nil {
-		fmt.Println(err)
-		return []Listing{}
-	}
+    if err != nil {
+        fmt.Println(err)
+        return []Listing{}
+    }
 
-	var listings Listings
-	json.Unmarshal(byteValue, &listings)
+    var listings Listings
+    json.Unmarshal(byteValue, &listings)
 
-	return listings.Listings
+    return listings.Listings
 }
 
 func saveDatabase(listings []Listing) error {
-	file, err := json.MarshalIndent(Listings{listings}, "", "  ")
+    file, err := json.MarshalIndent(Listings{listings}, "", "  ")
 
-	if err != nil {
-		return err
-	}
+    if err != nil {
+        return err
+    }
 
-	return ioutil.WriteFile("listings.json", file, 0644)
+    return ioutil.WriteFile("listings.json", file, 0644)
 }
