@@ -21,7 +21,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: ./listings.json
-          key: item-listings
+          key: item-listings-v2
       - name: Build scraper
         shell: bash
         run: >

@@ -17,6 +17,28 @@ func createOLXLink(item string, page int) string {
 	return fmt.Sprintf("https://www.olx.ro/oferte/q-%s/?search%%5Border%%5D=filter_float_price%%3Aasc&page=%d", item, page)
 }
 
+func getTotalPages(document *goquery.Document, reg *regexp.Regexp) (int, error) {
+	pagerSel := document.Find(".pager input[type='submit']")
+	totalPageText, _ := pagerSel.Attr("class")
+
+	if len(totalPageText) == 0 {
+		totalPageText = document.Find(".pager a[data-cy='page-link-last'] span").Text()
+
+		if len(totalPageText) == 0 {
+			return 1, nil
+		}
+	}
+
+	totalPageText = reg.ReplaceAllString(totalPageText, "")
+	totalPages, err := strconv.Atoi(totalPageText)
+
+	if err != nil {
+		return 0, err
+	}
+
+	return totalPages, nil
+}
+
 func scrapePage(client *http.Client, item string, listings []Listing, page int) ([]Listing, error) {
 	fmt.Printf("Scraping OLX keyword %s (page %d)\n", item, page)
 
@@ -98,18 +120,10 @@ func scrapePage(client *http.Client, item string, listings []Listing, page int) 
 		return listings, err
 	}
 
-	pagerSel := document.Find(".pager input[type='submit']")
-	totalPageText, exists := pagerSel.Attr("class")
-
-	if !exists {
-		return listings, nil
-	}
-
-	totalPageText = reg.ReplaceAllString(totalPageText, "")
-	totalPages, err := strconv.Atoi(totalPageText)
+	totalPages, err := getTotalPages(document, reg)
 
 	if err != nil {
-		return listings, nil
+		return listings, err
 	}
 
 	if totalPages > page {
@@ -124,13 +138,13 @@ func scrapePage(client *http.Client, item string, listings []Listing, page int) 
 }
 
 func main() {
-	clientID := flag.String("client", "", "WirePusher client ID");
+	clientID := flag.String("client", "", "WirePusher client ID")
 
 	flag.Parse()
 
 	if len(*clientID) == 0 {
 		flag.PrintDefaults()
-		return;
+		return
 	}
 
 	client := &http.Client{
@@ -164,12 +178,12 @@ func main() {
 	}
 
 	if len(database) == 0 {
-		println("Skipping notifications on first run...");
-		return;
+		println("Skipping notifications on first run...")
+		return
 	}
 
 	for _, listing := range newListings {
-		fmt.Printf("Sending notification for %s for %d lei...\n", listing.Title, listing.Price);
+		fmt.Printf("Sending notification for %s for %d lei...\n", listing.Title, listing.Price)
 		sendNotification(client, listing, *clientID)
 	}
 }
