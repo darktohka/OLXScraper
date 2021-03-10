@@ -14,7 +14,7 @@ import (
 
 func createOLXLink(item string, page int) string {
     item = strings.Replace(item, " ", "-", -1)
-    return fmt.Sprintf("https://www.olx.ro/oferte/q-%s/?search%%5Border%%5D=filter_float_price%%3Aasc&page=%d", item, page)
+    return fmt.Sprintf("https://www.olx.ro/oferte/q-%s/?page=%d", item, page)
 }
 
 func getTotalPages(document *goquery.Document, reg *regexp.Regexp) (int, error) {
